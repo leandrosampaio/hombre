@@ -167,79 +167,95 @@ async def _honcho_post(path: str, body: dict | None = None) -> dict | list | Non
 @app.post("/api/workspaces/{wid}/conclusions/list/all")
 async def list_all_conclusions(wid: str):
     """Fetch ALL conclusions for a workspace by paginating through them.
-    Honcho typically returns paginated results; this endpoint collects them all."""
+
+    Honcho uses fastapi_pagination which reads page/size from QUERY
+    parameters, not the POST body.
+    """
     if not VALID_ID.match(wid):
         return JSONResponse({"error": "invalid_id"}, status_code=400)
 
     all_conclusions = []
-    cursor = None
-    limit = 100
+    page = 1
+    size = 100
     max_pages = 50  # safety limit: 50 pages * 100 = 5000 conclusions max
 
     for _ in range(max_pages):
-        body = {"limit": limit}
-        if cursor:
-            body["cursor"] = cursor
-
-        result = await _honcho_post(f"workspaces/{wid}/conclusions/list", body)
-        if result is None:
+        try:
+            resp = await _client.post(
+                f"/v3/workspaces/{wid}/conclusions/list",
+                json={},
+                params={"page": page, "size": size},
+            )
+            if resp.status_code >= 400:
+                log.warning("Honcho error %d on conclusions list page %d", resp.status_code, page)
+                break
+            result = resp.json()
+        except Exception as e:
+            log.error("Conclusions list failed page %d: %s", page, e)
             break
 
-        # Handle different response shapes
         if isinstance(result, list):
             all_conclusions.extend(result)
-            if len(result) < limit:
+            if len(result) < size:
                 break
-            # If we got exactly limit items, try to get more (offset-based pagination)
-            if not cursor:
-                body["offset"] = len(all_conclusions)
         elif isinstance(result, dict):
-            items = result.get("conclusions", result.get("items", result.get("results", [])))
+            items = result.get("items", result.get("conclusions", result.get("results", [])))
             all_conclusions.extend(items)
-            cursor = result.get("cursor") or result.get("next_cursor")
-            if not cursor or len(items) < limit:
+            total_pages = result.get("pages", 1)
+            if page >= total_pages or len(items) < size:
                 break
         else:
             break
+
+        page += 1
 
     return {"conclusions": all_conclusions, "count": len(all_conclusions)}
 
 
 @app.post("/api/workspaces/{wid}/sessions/{sid}/messages/list/all")
 async def list_all_messages(wid: str, sid: str):
-    """Fetch ALL messages for a session by paginating through them."""
+    """Fetch ALL messages for a session by paginating through them.
+
+    Honcho uses fastapi_pagination which reads page/size from QUERY
+    parameters, not the POST body.
+    """
     if not VALID_ID.match(wid) or not VALID_ID.match(sid):
         return JSONResponse({"error": "invalid_id"}, status_code=400)
 
     all_messages = []
-    cursor = None
-    limit = 100
+    page = 1
+    size = 100
     max_pages = 50
 
     for _ in range(max_pages):
-        body = {"limit": limit}
-        if cursor:
-            body["cursor"] = cursor
-
-        result = await _honcho_post(f"workspaces/{wid}/sessions/{sid}/messages/list", body)
-        if result is None:
+        try:
+            resp = await _client.post(
+                f"/v3/workspaces/{wid}/sessions/{sid}/messages/list",
+                json={},
+                params={"page": page, "size": size},
+            )
+            if resp.status_code >= 400:
+                log.warning("Honcho error %d on messages list page %d", resp.status_code, page)
+                break
+            result = resp.json()
+        except Exception as e:
+            log.error("Messages list failed page %d: %s", page, e)
             break
 
         if isinstance(result, list):
             all_messages.extend(result)
-            if len(result) < limit:
+            if len(result) < size:
                 break
-            # If we got exactly limit items, try to get more (offset-based pagination)
-            if not cursor:
-                body["offset"] = len(all_messages)
         elif isinstance(result, dict):
-            items = result.get("messages", result.get("items", result.get("results", [])))
+            items = result.get("items", result.get("messages", result.get("results", [])))
             all_messages.extend(items)
-            cursor = result.get("cursor") or result.get("next_cursor")
-            if not cursor or len(items) < limit:
+            total_pages = result.get("pages", 1)
+            if page >= total_pages or len(items) < size:
                 break
         else:
             break
+
+        page += 1
 
     return {"messages": all_messages, "count": len(all_messages)}
 
