@@ -344,12 +344,17 @@ const App = {
 
     const email = this.state.user.email || 'user';
     const initials = email.charAt(0).toUpperCase();
+    const isBasicAuth = !this.state.supabaseConfigured && (this.state.basicAuthUser || false);
+    
     container.innerHTML = `
       <div class="auth-user">
         <div class="auth-avatar">${this.escapeHtml(initials)}</div>
         <span class="auth-name">${this.escapeHtml(email)}</span>
       </div>
-      <button class="btn btn-ghost btn-sm w-full" data-action="logout">Sign Out</button>
+      <div class="text-xs text-muted mb-2" style="text-align:center">
+        ${isBasicAuth ? 'Basic Auth — close browser to fully log out' : 'Supabase Auth'}
+      </div>
+      <button class="btn btn-ghost btn-sm w-full" data-action="logout">${isBasicAuth ? 'Clear Session' : 'Sign Out'}</button>
     `;
   },
 
@@ -2675,14 +2680,14 @@ const SettingsTab = {
               <div class="settings-field">
                 <label>Anon Key (public)</label>
                 <div class="settings-masked">
-                  <input type="password" class="input" id="supabase-key" value="" placeholder="••••">
+                  <input type="password" class="input" id="supabase-key" data-key="supabase-key" value="" placeholder="••••">
                   <button class="settings-mask-toggle" data-action="toggle-mask" data-key="supabase-key">show</button>
                 </div>
               </div>
               <div class="settings-field">
                 <label>Service Role Key (secret)</label>
                 <div class="settings-masked">
-                  <input type="password" class="input" id="supabase-service-key" value="" placeholder="••••">
+                  <input type="password" class="input" id="supabase-service-key" data-key="supabase-service-key" value="" placeholder="••••">
                   <button class="settings-mask-toggle" data-action="toggle-mask" data-key="supabase-service-key">show</button>
                 </div>
               </div>
