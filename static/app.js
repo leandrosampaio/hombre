@@ -7,6 +7,8 @@ const App = {
     sessions: [],
     sessionPage: 1,
     sessionPageSize: 50,
+    conclusionPage: 1,
+    conclusionPageSize: 25,
     user: null,
     supabaseConfigured: false,
   },
@@ -49,7 +51,6 @@ const App = {
       else if (action === 'search-conclusions') ConclusionsTab.search();
       else if (action === 'load-messages') MessagesTab.load();
       else if (action === 'send-chat') ChatTab.send();
-      else if (action === 'load-more-conclusions') ConclusionsTab.loadMore();
       else if (action === 'load-more-messages') MessagesTab.loadMore();
       else if (action === 'delete-conclusion') ConclusionsTab.deleteItem(id, btn);
       else if (action === 'delete-message') MessagesTab.deleteItem(id, btn);
@@ -57,6 +58,8 @@ const App = {
       else if (action === 'compare-peers') PeersTab.openCompare();
       else if (action === 'sessions-page-prev') SessionsTab.goToPage(App.state.sessionPage - 1);
       else if (action === 'sessions-page-next') SessionsTab.goToPage(App.state.sessionPage + 1);
+      else if (action === 'conclusions-page-prev') ConclusionsTab.goToPage(App.state.conclusionPage - 1);
+      else if (action === 'conclusions-page-next') ConclusionsTab.goToPage(App.state.conclusionPage + 1);
       else if (action === 'view-trash') ConclusionsTab.viewTrash();
       else if (action === 'restore-conclusion') ConclusionsTab.restoreItem(id);
       else if (action === 'permanent-delete-conclusion') ConclusionsTab.permanentDeleteItem(id);
@@ -92,6 +95,7 @@ const App = {
       if (this.state.workspace) {
         localStorage.setItem('hombre_workspace', wsId);
         this.state.sessionPage = 1;
+        this.state.conclusionPage = 1;
         await this.loadPeersAndSessions();
         this.renderTab(this.state.activeTab);
         this.refreshSyncIndicator();
@@ -1760,18 +1764,14 @@ const ChatTab = {
 const ConclusionsTab = {
   state: {
     items: [],
-    offset: 0,
-    limit: 20,
-    allLoaded: false,
     currentPeerId: null,
     currentQuery: null,
   },
 
   resetState() {
     this.state.items = [];
-    this.state.offset = 0;
-    this.state.allLoaded = false;
     this.state.currentPeerId = null;
+    App.state.conclusionPage = 1;
   },
 
   async render(el) {
@@ -1814,6 +1814,7 @@ const ConclusionsTab = {
       if (enabled) {
         this.resetState();
         this.state.currentPeerId = peerSelect.value;
+        App.state.conclusionPage = 1;
         this.loadConclusions(peerSelect.value);
       }
     });
@@ -1827,26 +1828,17 @@ const ConclusionsTab = {
     results.innerHTML = '<div class="loading-overlay"><div class="spinner"></div> Loading...</div>';
 
     try {
-      const data = await App.api(`workspaces/${ws.id}/conclusions/list`, {
+      const data = await App.api(`workspaces/${ws.id}/conclusions/list/all`, {
         body: {
           filters: { observer_id: peerId },
-          limit: this.state.limit,
-          offset: this.state.offset,
         }
       });
-      const newItems = data.items || [];
-      this.state.items = this.state.offset === 0 ? newItems : [...this.state.items, ...newItems];
-      this.state.allLoaded = newItems.length < this.state.limit;
+      this.state.items = data.conclusions || [];
       this.state.currentQuery = null;
       this.renderResults(results, this.state.items);
     } catch {
       results.innerHTML = '<div class="text-sm text-muted">Failed to load conclusions</div>';
     }
-  },
-
-  async loadMore() {
-    this.state.offset = this.state.items.length;
-    await this.loadConclusions(this.state.currentPeerId);
   },
 
   async search() {
@@ -1860,9 +1852,8 @@ const ConclusionsTab = {
 
     // Reset state for new search
     this.state.items = [];
-    this.state.allLoaded = false;
-    this.state.offset = 0;
     this.state.currentQuery = query;
+    App.state.conclusionPage = 1;
 
     results.innerHTML = '<div class="loading-overlay"><div class="spinner"></div> Searching...</div>';
 
@@ -1880,36 +1871,26 @@ const ConclusionsTab = {
       );
       const filteredIds = new Set(filteredSemanticResults.map(c => c.id));
 
-      // Step 2: Paginate through ALL conclusions and find text matches
+      // Step 2: Fetch ALL conclusions and find text matches
       const extraMatches = [];
-      let offset = 0;
-      const pageSize = 50;
-      let totalPages = 1;
+      const allData = await App.api(`workspaces/${ws.id}/conclusions/list/all`, {
+        body: { filters: { observer_id: peerId } }
+      });
+      const allItems = allData.conclusions || [];
 
-      for (let page = 0; page < totalPages; page++) {
-        const data = await App.api(`workspaces/${ws.id}/conclusions/list`, {
-          body: { filters: { observer_id: peerId, observed_id: peerId }, limit: pageSize, offset }
-        });
-        totalPages = data.pages || 1;
-        const items = data.items || [];
-
-        for (const item of items) {
-          if (!filteredIds.has(item.id) && item.content && item.content.toLowerCase().includes(queryLower)) {
-            extraMatches.push(item);
-            filteredIds.add(item.id);
-          }
+      for (const item of allItems) {
+        if (!filteredIds.has(item.id) && item.content && item.content.toLowerCase().includes(queryLower)) {
+          extraMatches.push(item);
+          filteredIds.add(item.id);
         }
-        offset += pageSize;
       }
 
       // Combine: filtered semantic results first (more relevant), then additional text matches
       const allResults = [...filteredSemanticResults, ...extraMatches];
       this.state.items = allResults;
-      this.state.allLoaded = true;
       this.renderResults(results, allResults);
     } catch {
       this.state.items = [];
-      this.state.allLoaded = false;
       this.state.currentQuery = null;
       results.innerHTML = '<div class="text-sm text-muted">Search failed — try a different term</div>';
     }
@@ -1934,19 +1915,19 @@ const ConclusionsTab = {
     }
 
     const query = this.state.currentQuery;
-
-    const loadMoreHtml = this.state.allLoaded ? '' : `
-      <div class="load-more-wrap">
-        <button class="btn-load-more" data-action="load-more-conclusions">Load More</button>
-      </div>
-    `;
+    const total = items.length;
+    const pageSize = App.state.conclusionPageSize;
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    if (App.state.conclusionPage > totalPages) App.state.conclusionPage = totalPages;
+    const pageStart = (App.state.conclusionPage - 1) * pageSize;
+    const pageItems = items.slice(pageStart, pageStart + pageSize);
 
     container.innerHTML = `
-      <div class="text-sm text-muted mb-3">${items.length} conclusion${items.length !== 1 ? 's' : ''}</div>
+      <div class="text-sm text-muted mb-3">${total} conclusion${total !== 1 ? 's' : ''}</div>
       <div class="flex flex-col gap-2" id="conclusion-list">
-        ${items.map((c, idx) => {
+        ${pageItems.map((c, idx) => {
           const type = this.guessType(c.content);
-          const cid = c.id || `c-${idx}`;
+          const cid = c.id || `c-${idx + pageStart}`;
           const contentHtml = query ? this.highlightKeyword(c.content, query) : App.escapeHtml(c.content);
           return `
             <div class="card" data-conclusion-id="${App.escapeAttr(cid)}">
@@ -1969,8 +1950,25 @@ const ConclusionsTab = {
           `;
         }).join('')}
       </div>
-      ${loadMoreHtml}
+      ${total > pageSize ? `
+        <div class="pagination-controls">
+          <button class="btn btn-ghost btn-sm" data-action="conclusions-page-prev" ${App.state.conclusionPage <= 1 ? 'disabled' : ''}>&laquo; Previous</button>
+          <span class="pagination-info text-sm text-muted">Page ${App.state.conclusionPage} of ${totalPages} (${total} total conclusions)</span>
+          <button class="btn btn-ghost btn-sm" data-action="conclusions-page-next" ${App.state.conclusionPage >= totalPages ? 'disabled' : ''}>Next &raquo;</button>
+        </div>
+      ` : ''}
     `;
+  },
+
+  goToPage(page) {
+    const total = this.state.items.length;
+    const totalPages = Math.max(1, Math.ceil(total / App.state.conclusionPageSize));
+    App.state.conclusionPage = Math.max(1, Math.min(page, totalPages));
+    const results = document.getElementById('conclusion-results');
+    if (results && this.state.items.length > 0) {
+      this.renderResults(results, this.state.items);
+      results.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   },
 
   async deleteItem(id, btnEl) {
