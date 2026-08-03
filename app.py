@@ -248,7 +248,8 @@ async def list_all_messages(wid: str, sid: str):
 async def list_all_sessions(wid: str):
     """Fetch ALL sessions for a workspace by paginating through them.
 
-    Honcho returns offset-based pagination: {items, total, page, size, pages}.
+    Honcho uses fastapi_pagination which reads page/size from QUERY
+    parameters, not the POST body. The body carries filter options.
     """
     if not VALID_ID.match(wid):
         return JSONResponse({"error": "invalid_id"}, status_code=400)
@@ -259,10 +260,18 @@ async def list_all_sessions(wid: str):
     max_pages = 50  # safety limit: 50 pages * 100 = 5000 sessions max
 
     for _ in range(max_pages):
-        body = {"size": size, "page": page}
-
-        result = await _honcho_post(f"workspaces/{wid}/sessions/list", body)
-        if result is None:
+        try:
+            resp = await _client.post(
+                f"/v3/workspaces/{wid}/sessions/list",
+                json={},
+                params={"page": page, "size": size},
+            )
+            if resp.status_code >= 400:
+                log.warning("Honcho error %d on sessions list page %d", resp.status_code, page)
+                break
+            result = resp.json()
+        except Exception as e:
+            log.error("Sessions list failed page %d: %s", page, e)
             break
 
         if isinstance(result, list):
