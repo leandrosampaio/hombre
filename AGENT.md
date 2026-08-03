@@ -41,8 +41,8 @@ node --check static/app.js
 - `data/notifications.json` — Recent notifications (auto-created, used when Supabase not configured)
 - `data/trash/conclusions.json` — Trashed conclusions (auto-created)
 - `static/app.js` — All frontend logic (7 tab modules, Modal, App, notifications, sync indicator, 429 handling, credentials UI, trash UI)
-- `static/style.css` — Dark theme CSS (colorblind-friendly sync indicator, sidebar flex layout)
-- `static/index.html` — SPA shell with sidebar nav, sync indicator pinned to bottom, and auth section
+- `static/style.css` — Dark theme CSS (colorblind-friendly sync indicator, sidebar flex layout; sections expand to fill space, no internal scrollbars)
+- `static/index.html` — SPA shell with sidebar nav (Logs renamed to Honcho Logs), sync indicator pinned to bottom, and auth section
 - `Dockerfile` — Python 3.12-slim, EXPOSE 5000 (built from dev repo, pushed to ghcr.io/lovethatbrandx/hombre/hombre:latest)
 - `docker-compose.yml` — Port 5000:5000, healthcheck (also exists in `~/docker/hombre/` deployment folder)
 - `docs/API.md` — Complete API reference (all endpoints, request/response formats)

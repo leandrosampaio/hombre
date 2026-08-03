@@ -48,6 +48,7 @@ Built entirely with AI coding tools ([OpenCode](https://opencode.ai) + [MiMo](ht
 - **Notifications** — real-time notification bell for workspace events and new conclusions
 - **Security** — role-based access control (admin/editor/viewer), rate limiting, audit logging
 - **Typing Indicator** — animated dots while the model is thinking
+- **Sidebar Improvements** — sections expand to fill space (no internal scrollbars); Logs renamed to Honcho Logs.
 - **Pagination** — load-more pattern for conclusions and messages
 - **Colorblind-Friendly UI** — blue for synced, orange for syncing; icons alongside colors for non-color-dependent state
 - **Browser Caching Fix** — all GET requests use `cache: 'no-store'` to prevent stale data
