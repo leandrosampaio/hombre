@@ -1182,6 +1182,22 @@ tr:hover .btn-delete-inline {
   cursor: not-allowed;
 }
 
+/* ─── Pagination Controls ─── */
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px 0;
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+}
+
+.pagination-info {
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 /* ─── Comparison Container ─── */
 .comparison-container {
   display: grid;

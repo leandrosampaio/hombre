@@ -5,6 +5,8 @@ const App = {
     workspaces: [],
     peers: [],
     sessions: [],
+    sessionPage: 1,
+    sessionPageSize: 50,
     user: null,
     supabaseConfigured: false,
   },
@@ -53,6 +55,8 @@ const App = {
       else if (action === 'delete-message') MessagesTab.deleteItem(id, btn);
       else if (action === 'delete-peer') PeersTab.deletePeer(id, btn);
       else if (action === 'compare-peers') PeersTab.openCompare();
+      else if (action === 'sessions-page-prev') SessionsTab.goToPage(App.state.sessionPage - 1);
+      else if (action === 'sessions-page-next') SessionsTab.goToPage(App.state.sessionPage + 1);
       else if (action === 'view-trash') ConclusionsTab.viewTrash();
       else if (action === 'restore-conclusion') ConclusionsTab.restoreItem(id);
       else if (action === 'permanent-delete-conclusion') ConclusionsTab.permanentDeleteItem(id);
@@ -87,6 +91,7 @@ const App = {
       this.state.workspace = this.state.workspaces.find(w => w.id === wsId) || null;
       if (this.state.workspace) {
         localStorage.setItem('hombre_workspace', wsId);
+        this.state.sessionPage = 1;
         await this.loadPeersAndSessions();
         this.renderTab(this.state.activeTab);
         this.refreshSyncIndicator();
@@ -1401,12 +1406,18 @@ const SessionsTab = {
       return;
     }
 
+    const total = App.state.sessions.length;
+    const totalPages = Math.max(1, Math.ceil(total / App.state.sessionPageSize));
+    if (App.state.sessionPage > totalPages) App.state.sessionPage = totalPages;
+    const pageStart = (App.state.sessionPage - 1) * App.state.sessionPageSize;
+    const pageSessions = App.state.sessions.slice(pageStart, pageStart + App.state.sessionPageSize);
+
     el.innerHTML = `
       <div class="tab-header">
         <div class="flex items-center justify-between">
           <div>
             <h2>Sessions</h2>
-            <p>${App.state.sessions.length} session${App.state.sessions.length !== 1 ? 's' : ''}</p>
+            <p>${total} session${total !== 1 ? 's' : ''}</p>
           </div>
           <button class="btn btn-primary" id="create-session-btn">+ New Session</button>
         </div>
@@ -1415,7 +1426,7 @@ const SessionsTab = {
         <table>
           <thead><tr><th>Session ID</th><th>Status</th><th>Created</th><th></th></tr></thead>
           <tbody>
-            ${App.state.sessions.map(s => `
+            ${pageSessions.map(s => `
               <tr class="clickable" data-session="${App.escapeAttr(s.id)}">
                 <td><code>${App.escapeHtml(s.id)}</code></td>
                 <td><span class="badge ${s.is_active ? 'badge-green' : 'badge-accent'}">${s.is_active ? 'Active' : 'Inactive'}</span></td>
@@ -1445,6 +1456,13 @@ const SessionsTab = {
           </tbody>
         </table>
       </div>
+      ${total > App.state.sessionPageSize ? `
+        <div class="pagination-controls">
+          <button class="btn btn-ghost btn-sm" data-action="sessions-page-prev" ${App.state.sessionPage <= 1 ? 'disabled' : ''}>&laquo; Previous</button>
+          <span class="pagination-info text-sm text-muted">Page ${App.state.sessionPage} of ${totalPages} (${total} total sessions)</span>
+          <button class="btn btn-ghost btn-sm" data-action="sessions-page-next" ${App.state.sessionPage >= totalPages ? 'disabled' : ''}>Next &raquo;</button>
+        </div>
+      ` : ''}
     `;
 
     document.getElementById('create-session-btn').addEventListener('click', () => this.createSession());
@@ -1466,6 +1484,12 @@ const SessionsTab = {
         });
       });
     });
+  },
+
+  goToPage(page) {
+    const totalPages = Math.max(1, Math.ceil(App.state.sessions.length / App.state.sessionPageSize));
+    App.state.sessionPage = Math.max(1, Math.min(page, totalPages));
+    App.renderTab(App.state.activeTab);
   },
 
   createSession() {
