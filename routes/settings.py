@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from routes.supabase import get_admin_client, is_admin_configured
 from routes.security import _users_cache, ROLE_PERMISSIONS
@@ -488,8 +488,15 @@ async def restart_containers(request: Request):
 
 class DashboardUser(BaseModel):
     username: str
-    password: str
+    password: str | None = None
     role: str
+
+    @field_validator("password")
+    @classmethod
+    def _validate_password(cls, v: str | None) -> str | None:
+        if v is not None and len(v) < 8:
+            raise ValueError("password must be at least 8 characters")
+        return v
 
 
 class DashboardUsersRequest(BaseModel):
@@ -502,10 +509,22 @@ def _write_dashboard_users_to_env(users: list[DashboardUser]) -> None:
     if not env_path.exists():
         raise HTTPException(status_code=404, detail="env_file_not_found")
 
-    entries = ",".join([f"{u.username}:{u.password}:{u.role}" for u in users])
+    # Read existing passwords from current env to preserve when None provided
+    existing_passwords = {}
+    content = env_path.read_text()
+    match = re.search(r"^DASHBOARD_USERS=(.*)$", content, re.MULTILINE)
+    if match:
+        for entry in match.group(1).split(","):
+            parts = entry.split(":", 2)
+            if len(parts) == 3:
+                existing_passwords[parts[0]] = parts[1]
+
+    entries = ",".join([
+        f"{u.username}:{u.password if u.password is not None else existing_passwords.get(u.username, '')}:{u.role}"
+        for u in users
+    ])
     new_line = f"DASHBOARD_USERS={entries}"
 
-    content = env_path.read_text()
     pattern = r"^DASHBOARD_USERS=.*$"
     if re.search(pattern, content, re.MULTILINE):
         content = re.sub(pattern, new_line, content, flags=re.MULTILINE)
@@ -560,9 +579,12 @@ async def update_users(req: DashboardUsersRequest, request: Request):
     await asyncio.to_thread(_write_dashboard_users_to_env, req.users)
 
     # Update the in-memory cache (same dict object the middleware references)
+    # Preserve existing passwords when not provided (None)
     _users_cache.clear()
     for u in req.users:
-        _users_cache[u.username] = {"password": u.password, "role": u.role}
+        existing = _users_cache.get(u.username, {})
+        password = u.password if u.password is not None else existing.get("password", "")
+        _users_cache[u.username] = {"password": password, "role": u.role}
 
     await _audit("settings.users.write", user=user, detail=f"users={[u.username for u in req.users]}")
     return {"status": "ok", "count": len(req.users)}
