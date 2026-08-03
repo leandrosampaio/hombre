@@ -1129,7 +1129,7 @@ code {
 .btn-delete-inline {
   background: none;
   border: none;
-  color: var(--text-dim);
+  color: var(--text-muted);
   cursor: pointer;
   font-size: 14px;
   line-height: 1;
