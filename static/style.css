@@ -1646,3 +1646,34 @@ tr:hover .btn-delete-inline {
   background: rgba(223, 95, 121, 0.12);
   border-color: rgba(223, 95, 121, 0.4);
 }
+
+/* ─── Honcho Log Viewer ─── */
+.log-output {
+  background: #1a1a2e;
+  color: #e0e0e0;
+  font-family: 'JetBrains Mono', 'Fira Code', var(--font);
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 12px;
+  border-radius: var(--radius);
+  max-height: 400px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+}
+
+.log-line {
+  white-space: pre-wrap;
+  word-break: break-all;
+  padding: 1px 0;
+}
+
+.log-line.error { color: #ff6b6b; }
+.log-line.warning { color: #ffd93d; }
+
+.log-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}

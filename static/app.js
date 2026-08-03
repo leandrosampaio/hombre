@@ -63,6 +63,9 @@ const App = {
       else if (action === 'permanent-delete-conclusion') ConclusionsTab.permanentDeleteItem(id);
       else if (action === 'sync-trigger') SettingsTab.triggerSync();
       else if (action === 'sync-refresh') SettingsTab.refreshSyncStatus();
+      else if (action === 'log-start') HonchoLogs.start();
+      else if (action === 'log-stop') HonchoLogs.stop();
+      else if (action === 'log-clear') HonchoLogs.clear();
     });
 
     document.getElementById('modal-root').addEventListener('click', (e) => {
@@ -201,6 +204,8 @@ const App = {
   },
 
   renderTab(tab) {
+    // Clean up Honcho log stream when re-rendering (DOM will be cleared)
+    HonchoLogs.stop();
     const main = document.getElementById('main-content');
     main.innerHTML = '';
     switch (tab) {
@@ -211,6 +216,7 @@ const App = {
       case 'conclusions': ConclusionsTab.render(main); break;
       case 'messages': MessagesTab.render(main); break;
       case 'settings': SettingsTab.render(main); break;
+      case 'logs': LogsTab.render(main); break;
     }
   },
 
@@ -2286,6 +2292,113 @@ const MessagesTab = {
   }
 };
 
+/* ─── Honcho Logs ─── */
+const HonchoLogs = {
+  _eventSource: null,
+
+  start() {
+    const container = document.getElementById('log-container');
+    const tail = document.getElementById('log-tail');
+    const output = document.getElementById('log-output');
+    const startBtn = document.getElementById('log-start');
+    const stopBtn = document.getElementById('log-stop');
+    if (!container || !tail || !output) return;
+
+    // Close any existing stream first
+    this.stop();
+
+    const containerName = container.value;
+    const tailLines = tail.value;
+    const url = `/api/honcho/logs/${encodeURIComponent(containerName)}?tail=${tailLines}`;
+
+    output.innerHTML = '<div class="log-line text-muted">Connecting to log stream...</div>';
+
+    try {
+      this._eventSource = new EventSource(url);
+    } catch (e) {
+      output.innerHTML = `<div class="log-line error">Failed to connect: ${App.escapeHtml(e.message)}</div>`;
+      return;
+    }
+
+    this._eventSource.onopen = () => {
+      // Clear the "Connecting..." message
+      const firstLine = output.querySelector('.log-line.text-muted');
+      if (firstLine && firstLine.textContent.includes('Connecting')) {
+        firstLine.remove();
+      }
+    };
+
+    this._eventSource.onmessage = (event) => {
+      const text = event.data;
+      if (!text) return;
+
+      // Remove "Connecting..." placeholder if still present
+      const placeholder = output.querySelector('.log-line.text-muted');
+      if (placeholder && placeholder.textContent.includes('Connecting')) {
+        placeholder.remove();
+      }
+
+      // Split multi-line data into individual lines
+      const lines = text.split('\n');
+      for (const line of lines) {
+        const div = document.createElement('div');
+        div.className = 'log-line';
+        const upper = line.toUpperCase();
+        if (upper.includes('ERROR')) div.classList.add('error');
+        else if (upper.includes('WARNING') || upper.includes('WARN')) div.classList.add('warning');
+        div.textContent = line;
+        output.appendChild(div);
+      }
+
+      // Auto-scroll only if user is already near the bottom
+      const threshold = 80;
+      const nearBottom = output.scrollHeight - output.scrollTop - output.clientHeight < threshold;
+      if (nearBottom) {
+        output.scrollTop = output.scrollHeight;
+      }
+    };
+
+    this._eventSource.onerror = () => {
+      // EventSource auto-retries; only show error if we were connected and then lost it
+      if (this._eventSource && this._eventSource.readyState === EventSource.CLOSED) {
+        const div = document.createElement('div');
+        div.className = 'log-line warning';
+        div.textContent = '--- Connection lost. Click Start to reconnect. ---';
+        output.appendChild(div);
+        output.scrollTop = output.scrollHeight;
+      }
+    };
+
+    // Update button states
+    if (startBtn) startBtn.disabled = true;
+    if (stopBtn) stopBtn.disabled = false;
+    container.disabled = true;
+    tail.disabled = true;
+  },
+
+  stop() {
+    if (this._eventSource) {
+      this._eventSource.close();
+      this._eventSource = null;
+    }
+
+    const startBtn = document.getElementById('log-start');
+    const stopBtn = document.getElementById('log-stop');
+    const container = document.getElementById('log-container');
+    const tail = document.getElementById('log-tail');
+
+    if (startBtn) startBtn.disabled = false;
+    if (stopBtn) stopBtn.disabled = true;
+    if (container) container.disabled = false;
+    if (tail) tail.disabled = false;
+  },
+
+  clear() {
+    const output = document.getElementById('log-output');
+    if (output) output.innerHTML = '';
+  },
+};
+
 /* ─── Settings Tab ─── */
 const SettingsTab = {
   dirty: {},
@@ -2472,6 +2585,9 @@ const SettingsTab = {
 
     // Sync section
     html += this.renderSyncSection();
+
+    // Honcho Logs section
+    html += this.renderHonchoLogsSection();
 
     html += `
       <div class="settings-sticky-bar">
@@ -3409,6 +3525,46 @@ const SettingsTab = {
     `;
   },
 
+  renderHonchoLogsSection() {
+    return `
+      <div class="accordion" data-section="honcho-logs">
+        <div class="accordion-header" data-action="toggle-accordion">
+          <div class="flex items-center gap-2">
+            <span>📋 Honcho Logs</span>
+          </div>
+          <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+        </div>
+        <div class="accordion-body">
+          <div class="accordion-content">
+            <div class="text-xs text-muted mb-2">Live log viewer for Honcho Docker containers. Stream logs in real time via SSE.</div>
+            <div class="log-controls">
+              <select id="log-container" class="input" style="max-width:220px" aria-label="Select container">
+                <option value="deriver">Deriver (background worker)</option>
+                <option value="api">API Server</option>
+              </select>
+              <button class="btn btn-primary btn-sm" id="log-start" data-action="log-start">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                Start
+              </button>
+              <button class="btn btn-ghost btn-sm" id="log-stop" data-action="log-stop" disabled>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+                Stop
+              </button>
+              <button class="btn btn-ghost btn-sm" id="log-clear" data-action="log-clear">Clear</button>
+              <select id="log-tail" class="input" style="max-width:150px" aria-label="Tail size">
+                <option value="100">Last 100 lines</option>
+                <option value="200" selected>Last 200 lines</option>
+                <option value="500">Last 500 lines</option>
+                <option value="1000">Last 1000 lines</option>
+              </select>
+            </div>
+            <div id="log-output" class="log-output"></div>
+          </div>
+        </div>
+      </div>
+    `;
+  },
+
   async triggerSync() {
     const ws = App.state.workspace;
     if (!ws) {
@@ -3506,5 +3662,61 @@ const SettingsTab = {
     }
   },
 };
-
-document.addEventListener('DOMContentLoaded', () => App.init());
+   
+   
+   /* ─── Logs Tab ─── */
+   const LogsTab = {
+     state: {
+       // Minimal state for logs tab
+     },
+   
+     async render(el) {
+       el.innerHTML = `
+         <div class="tab-header">
+           <div class="flex items-center justify-between">
+             <div>
+               <h2>Honcho Logs</h2>
+               <p>Live log viewer for Honcho Docker containers</p>
+             </div>
+           </div>
+         </div>
+         <div class="log-controls">
+           <select id="log-container" class="input" style="max-width:220px" aria-label="Select container">
+             <option value="deriver">Deriver (background worker)</option>
+             <option value="api">API Server</option>
+           </select>
+           <button class="btn btn-primary btn-sm" id="log-start" data-action="log-start">
+             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+             Start
+           </button>
+           <button class="btn btn-ghost btn-sm" id="log-stop" data-action="log-stop" disabled>
+             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+             Stop
+           </button>
+           <button class="btn btn-ghost btn-sm" id="log-clear" data-action="log-clear">Clear</button>
+           <select id="log-tail" class="input" style="max-width:150px" aria-label="Tail size">
+             <option value="100">Last 100 lines</option>
+             <option value="200" selected>Last 200 lines</option>
+             <option value="500">Last 500 lines</option>
+             <option value="1000">Last 1000 lines</option>
+           </select>
+         </div>
+         <div id="log-output" class="log-output"></div>
+       `;
+     },
+   
+     bindEvents(el) {
+       el.querySelectorAll('[data-action="log-start"]').forEach(btn => {
+         btn.addEventListener('click', () => HonchoLogs.start());
+       });
+       el.querySelectorAll('[data-action="log-stop"]').forEach(btn => {
+         btn.addEventListener('click', () => HonchoLogs.stop());
+       });
+       el.querySelectorAll('[data-action="log-clear"]').forEach(btn => {
+         btn.addEventListener('click', () => HonchoLogs.clear());
+       });
+     },
+   };
+   
+   
+   document.addEventListener('DOMContentLoaded', () => App.init());

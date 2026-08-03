@@ -7,7 +7,7 @@ from pathlib import Path
 from urllib.parse import unquote
 
 import httpx
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -306,6 +306,92 @@ async def list_all_sessions(wid: str):
         page += 1
 
     return {"sessions": all_sessions, "count": len(all_sessions)}
+
+
+# ---------------------------------------------------------------------------
+# Honcho container log streaming & status endpoints
+# ---------------------------------------------------------------------------
+
+_HONCHO_CONTAINERS = {"deriver": "honcho-deriver-1", "api": "honcho-api-1"}
+
+
+@app.get("/api/honcho/containers")
+async def honcho_containers():
+    """Return available Honcho Docker containers with their status."""
+    result = []
+    for short, full in _HONCHO_CONTAINERS.items():
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "docker", "inspect", "--format", "{{.State.Status}}", full,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+            )
+            stdout, _ = await proc.communicate()
+            status = stdout.decode().strip() if proc.returncode == 0 else "unknown"
+        except Exception:
+            status = "unreachable"
+        result.append({"name": short, "full_name": full, "status": status})
+    return {"containers": result}
+
+
+@app.get("/api/honcho/logs/{container}")
+async def honcho_logs(container: str, tail: int = Query(default=200, ge=1, le=5000)):
+    """Stream live Docker container logs via SSE.
+
+    Only ``deriver`` and ``api`` are accepted — anything else is rejected
+    before it can ever touch a subprocess call.
+    """
+    if container not in _HONCHO_CONTAINERS:
+        return JSONResponse(
+            {"error": "invalid_container", "allowed": list(_HONCHO_CONTAINERS)},
+            status_code=400,
+        )
+
+    full_name = _HONCHO_CONTAINERS[container]
+
+    async def event_stream():
+        proc = None
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "docker", "logs", "--follow", "--tail", str(tail),
+                "--timestamps", full_name,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+            )
+
+            while True:
+                try:
+                    line = await asyncio.wait_for(proc.stdout.readline(), timeout=30.0)
+                except asyncio.TimeoutError:
+                    # No output for 30 s — send SSE keepalive comment
+                    yield ": keepalive\n\n"
+                    continue
+
+                if not line:
+                    # Process exited or stream ended
+                    break
+
+                text = line.decode(errors="replace")
+                yield f"data: {text}\n\n"
+
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            log.error("Honcho log stream error (%s): %s", container, e)
+            yield f"data: [error] {e}\n\n"
+        finally:
+            if proc and proc.returncode is None:
+                try:
+                    proc.terminate()
+                    await asyncio.wait_for(proc.wait(), timeout=5.0)
+                except (ProcessLookupError, asyncio.TimeoutError):
+                    proc.kill()
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 # Keep this generic router after the dedicated workspace endpoints above.
