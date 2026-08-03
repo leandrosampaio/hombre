@@ -179,10 +179,10 @@ const App = {
     try {
       const [peers, sessions] = await Promise.all([
         this.api(`workspaces/${ws.id}/peers/list`, { body: {} }),
-        this.api(`workspaces/${ws.id}/sessions/list`, { body: {} }),
+        this.api(`workspaces/${ws.id}/sessions/list/all`, { body: {} }),
       ]);
       this.state.peers = peers.items || [];
-      this.state.sessions = sessions.items || [];
+      this.state.sessions = sessions.sessions || [];
     } catch (err) {
       if (this.isRateLimited(err)) {
         this.toast('Rate limited — try again in a moment', 'warning');
@@ -997,10 +997,10 @@ const OverviewTab = {
     try {
       const [peersData, sessionsData] = await Promise.all([
         App.api(`workspaces/${ws.id}/peers/list`, { body: {} }),
-        App.api(`workspaces/${ws.id}/sessions/list`, { body: {} }),
+        App.api(`workspaces/${ws.id}/sessions/list/all`, { body: {} }),
       ]);
       peerCount = (peersData.items || []).length;
-      sessionCount = (sessionsData.items || []).length;
+      sessionCount = (sessionsData.sessions || []).length;
       const conclusions = await App.api(`workspaces/${ws.id}/conclusions/list`, { body: {} });
       conclusionCount = conclusions.total || 0;
     } catch {}
@@ -1381,8 +1381,8 @@ const SessionsTab = {
     if (!ws) { el.innerHTML = '<div class="empty-state"><h3>No workspace selected</h3></div>'; return; }
 
     try {
-      const data = await App.api(`workspaces/${ws.id}/sessions/list`, { body: {} });
-      App.state.sessions = data.items || [];
+      const data = await App.api(`workspaces/${ws.id}/sessions/list/all`, { body: {} });
+      App.state.sessions = data.sessions || [];
     } catch { App.state.sessions = []; }
 
     if (App.state.sessions.length === 0) {

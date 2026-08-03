@@ -244,6 +244,46 @@ async def list_all_messages(wid: str, sid: str):
     return {"messages": all_messages, "count": len(all_messages)}
 
 
+@app.post("/api/workspaces/{wid}/sessions/list/all")
+async def list_all_sessions(wid: str):
+    """Fetch ALL sessions for a workspace by paginating through them."""
+    if not VALID_ID.match(wid):
+        return JSONResponse({"error": "invalid_id"}, status_code=400)
+
+    all_sessions = []
+    cursor = None
+    limit = 100
+    max_pages = 50  # safety limit: 50 pages * 100 = 5000 sessions max
+
+    for _ in range(max_pages):
+        body = {"limit": limit}
+        if cursor:
+            body["cursor"] = cursor
+
+        result = await _honcho_post(f"workspaces/{wid}/sessions/list", body)
+        if result is None:
+            break
+
+        # Handle different response shapes
+        if isinstance(result, list):
+            all_sessions.extend(result)
+            if len(result) < limit:
+                break
+            # If we got exactly limit items, try to get more (offset-based pagination)
+            if not cursor:
+                body["offset"] = len(all_sessions)
+        elif isinstance(result, dict):
+            items = result.get("sessions", result.get("items", result.get("results", [])))
+            all_sessions.extend(items)
+            cursor = result.get("cursor") or result.get("next_cursor")
+            if not cursor or len(items) < limit:
+                break
+        else:
+            break
+
+    return {"sessions": all_sessions, "count": len(all_sessions)}
+
+
 # Keep this generic router after the dedicated workspace endpoints above.
 # Its catch-all POST route would otherwise intercept the chat SSE endpoint.
 app.include_router(workspace_router)
