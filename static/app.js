@@ -56,10 +56,8 @@ const App = {
       else if (action === 'delete-message') MessagesTab.deleteItem(id, btn);
       else if (action === 'delete-peer') PeersTab.deletePeer(id, btn);
       else if (action === 'compare-peers') PeersTab.openCompare();
-      else if (action === 'sessions-page-prev') SessionsTab.goToPage(App.state.sessionPage - 1);
-      else if (action === 'sessions-page-next') SessionsTab.goToPage(App.state.sessionPage + 1);
-      else if (action === 'conclusions-page-prev') ConclusionsTab.goToPage(App.state.conclusionPage - 1);
-      else if (action === 'conclusions-page-next') ConclusionsTab.goToPage(App.state.conclusionPage + 1);
+      else if (action === 'sessions-page-goto') { const p = parseInt(btn.dataset.page, 10); if (!isNaN(p)) SessionsTab.goToPage(p); }
+      else if (action === 'conclusions-page-goto') { const p = parseInt(btn.dataset.page, 10); if (!isNaN(p)) ConclusionsTab.goToPage(p); }
       else if (action === 'view-trash') ConclusionsTab.viewTrash();
       else if (action === 'restore-conclusion') ConclusionsTab.restoreItem(id);
       else if (action === 'permanent-delete-conclusion') ConclusionsTab.permanentDeleteItem(id);
@@ -365,6 +363,50 @@ const App = {
 
   escapeAttr(s) {
     return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  },
+
+  /* ─── Shared Pagination Helper ─── */
+  renderPaginationControls(currentPage, totalPages, totalItems, tabName, label) {
+    if (totalPages <= 1) return '';
+    label = label || tabName;
+    const prevDisabled = currentPage <= 1;
+    const nextDisabled = currentPage >= totalPages;
+
+    // Calculate page number window (max 5, centered on currentPage)
+    const maxVisible = 5;
+    const half = Math.floor(maxVisible / 2);
+    let start = Math.max(1, currentPage - half);
+    let end = Math.min(totalPages, start + maxVisible - 1);
+    if (end - start + 1 < maxVisible) {
+      start = Math.max(1, end - maxVisible + 1);
+    }
+
+    // Exclude page 1 and last page from number buttons (covered by « / »)
+    // unless they are the current page
+    const pages = [];
+    for (let p = start; p <= end; p++) {
+      if (p === 1 && currentPage !== 1) continue;
+      if (p === totalPages && currentPage !== totalPages) continue;
+      pages.push(p);
+    }
+
+    let html = '<div class="pagination-controls">';
+    // « first page
+    html += `<button class="btn btn-ghost btn-sm" data-action="${tabName}-page-goto" data-page="1" ${prevDisabled ? 'disabled' : ''} aria-label="First page">\u00AB</button>`;
+    // ‹ previous
+    html += `<button class="btn btn-ghost btn-sm" data-action="${tabName}-page-goto" data-page="${currentPage - 1}" ${prevDisabled ? 'disabled' : ''} aria-label="Previous page">\u2039</button>`;
+    // page numbers
+    for (const p of pages) {
+      html += `<button class="page-btn${p === currentPage ? ' active' : ''}" data-action="${tabName}-page-goto" data-page="${p}">${p}</button>`;
+    }
+    // › next
+    html += `<button class="btn btn-ghost btn-sm" data-action="${tabName}-page-goto" data-page="${currentPage + 1}" ${nextDisabled ? 'disabled' : ''} aria-label="Next page">\u203A</button>`;
+    // » last page
+    html += `<button class="btn btn-ghost btn-sm" data-action="${tabName}-page-goto" data-page="${totalPages}" ${nextDisabled ? 'disabled' : ''} aria-label="Last page">\u00BB</button>`;
+    // info
+    html += `<span class="pagination-info text-sm text-muted">Page ${currentPage} of ${totalPages} (${totalItems} total ${label})</span>`;
+    html += '</div>';
+    return html;
   },
 
   /* ─── Error Helpers ─── */
@@ -1460,13 +1502,7 @@ const SessionsTab = {
           </tbody>
         </table>
       </div>
-      ${total > App.state.sessionPageSize ? `
-        <div class="pagination-controls">
-          <button class="btn btn-ghost btn-sm" data-action="sessions-page-prev" ${App.state.sessionPage <= 1 ? 'disabled' : ''}>&laquo; Previous</button>
-          <span class="pagination-info text-sm text-muted">Page ${App.state.sessionPage} of ${totalPages} (${total} total sessions)</span>
-          <button class="btn btn-ghost btn-sm" data-action="sessions-page-next" ${App.state.sessionPage >= totalPages ? 'disabled' : ''}>Next &raquo;</button>
-        </div>
-      ` : ''}
+      ${total > App.state.sessionPageSize ? App.renderPaginationControls(App.state.sessionPage, totalPages, total, 'sessions') : ''}
     `;
 
     document.getElementById('create-session-btn').addEventListener('click', () => this.createSession());
@@ -1950,13 +1986,7 @@ const ConclusionsTab = {
           `;
         }).join('')}
       </div>
-      ${total > pageSize ? `
-        <div class="pagination-controls">
-          <button class="btn btn-ghost btn-sm" data-action="conclusions-page-prev" ${App.state.conclusionPage <= 1 ? 'disabled' : ''}>&laquo; Previous</button>
-          <span class="pagination-info text-sm text-muted">Page ${App.state.conclusionPage} of ${totalPages} (${total} total conclusions)</span>
-          <button class="btn btn-ghost btn-sm" data-action="conclusions-page-next" ${App.state.conclusionPage >= totalPages ? 'disabled' : ''}>Next &raquo;</button>
-        </div>
-      ` : ''}
+      ${total > pageSize ? App.renderPaginationControls(App.state.conclusionPage, totalPages, total, 'conclusions') : ''}
     `;
   },
 
