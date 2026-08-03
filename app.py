@@ -1,8 +1,6 @@
 import os
 import re
 import asyncio
-import hmac
-import base64
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
