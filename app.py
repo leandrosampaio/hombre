@@ -246,40 +246,39 @@ async def list_all_messages(wid: str, sid: str):
 
 @app.post("/api/workspaces/{wid}/sessions/list/all")
 async def list_all_sessions(wid: str):
-    """Fetch ALL sessions for a workspace by paginating through them."""
+    """Fetch ALL sessions for a workspace by paginating through them.
+
+    Honcho returns offset-based pagination: {items, total, page, size, pages}.
+    """
     if not VALID_ID.match(wid):
         return JSONResponse({"error": "invalid_id"}, status_code=400)
 
     all_sessions = []
-    cursor = None
-    limit = 100
+    page = 1
+    size = 100
     max_pages = 50  # safety limit: 50 pages * 100 = 5000 sessions max
 
     for _ in range(max_pages):
-        body = {"limit": limit}
-        if cursor:
-            body["cursor"] = cursor
+        body = {"size": size, "page": page}
 
         result = await _honcho_post(f"workspaces/{wid}/sessions/list", body)
         if result is None:
             break
 
-        # Handle different response shapes
         if isinstance(result, list):
             all_sessions.extend(result)
-            if len(result) < limit:
+            if len(result) < size:
                 break
-            # If we got exactly limit items, try to get more (offset-based pagination)
-            if not cursor:
-                body["offset"] = len(all_sessions)
         elif isinstance(result, dict):
-            items = result.get("sessions", result.get("items", result.get("results", [])))
+            items = result.get("items", result.get("sessions", result.get("results", [])))
             all_sessions.extend(items)
-            cursor = result.get("cursor") or result.get("next_cursor")
-            if not cursor or len(items) < limit:
+            total_pages = result.get("pages", 1)
+            if page >= total_pages or len(items) < size:
                 break
         else:
             break
+
+        page += 1
 
     return {"sessions": all_sessions, "count": len(all_sessions)}
 
