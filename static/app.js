@@ -739,7 +739,7 @@ const App = {
     },
     sync: {
       'no-workspace': { dot: 'is-idle',     icon: 'is-idle',     glyph: '○', text: 'No workspace' },
-      'syncing':      { dot: 'is-amber',    icon: 'is-syncing',  glyph: '⟳', text: (ctx) => `Syncing (${ctx.pending} pending)` },
+      'syncing':      { dot: 'is-amber',    icon: 'is-syncing',  glyph: '⟳', text: 'Syncing' },
       'all-synced':   { dot: 'is-blue',     icon: 'is-synced',   glyph: '✓', text: 'All synced' },
       'idle':         { dot: 'is-idle',     icon: 'is-idle',     glyph: '○', text: 'Idle' },
       'offline':      { dot: 'is-offline',  icon: 'is-offline',  glyph: '⚠', text: 'Offline' },
