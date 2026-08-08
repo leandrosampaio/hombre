@@ -23,6 +23,22 @@ Hombre gives you a full web UI for workspaces, peers, sessions, chat, and config
 
 Built entirely with AI coding tools ([OpenCode](https://opencode.ai) + [MiMo](https://huggingface.co/XiaomiMiMo/MiMo-V2.5)). No shame about it.
 
+## Recent Updates
+
+This project is actively maintained. Here's what's landed recently.
+
+### Live Log Viewer
+
+Added real-time streaming logs from your Honcho server directly in the dashboard. No more SSH-ing into a container just to tail logs.
+
+- **Backend**: SSE endpoint at `/api/honcho/logs/{container}` streams logs from any Honcho Docker container
+- **Frontend**: "System → Honcho Logs" section in the sidebar with container selection and configurable tail lines
+- **Streaming**: Server-Sent Events for real-time output — logs appear as they happen
+
+### What's Next
+
+- More updates as they ship. If you're reading this and it's still just the one entry... well, check back soon.
+
 ## Features
 
 - **Sync Indicator** — sidebar shows real-time connection status (Connected/Offline), sync progress (pending/done/total) with a progress bar, colorblind-friendly icons, and "Updated Xs ago" timestamp
