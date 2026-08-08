@@ -27,7 +27,7 @@ Built entirely with AI coding tools ([OpenCode](https://opencode.ai) + [MiMo](ht
 
 This project is actively maintained. Here's what's landed recently.
 
-### August 2026 — Live Log Viewer
+### 2026.8.8 — Live Log Viewer
 
 Added real-time streaming logs from your Honcho server directly in the dashboard. No more SSH-ing into a container just to tail logs.
 
