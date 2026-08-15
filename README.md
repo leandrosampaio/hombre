@@ -1,7 +1,7 @@
 <div align="center">
   <img src="static/hombre_logo.jpg" alt="Hombre" width="400">
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg?style=for-the-badge)](LICENSE)
 [![Python 3.12+](https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
@@ -26,6 +26,13 @@ Built entirely with AI coding tools ([OpenCode](https://opencode.ai) + [MiMo](ht
 ## Recent Updates
 
 This project is actively maintained. Here's what's landed recently.
+
+### 2026.8.14 — License Change: MIT → AGPL-3.0
+
+Switched from MIT to AGPL-3.0 to align with the Honcho and broader open-source community. This ensures derivative works remain open source, which is important for self-hosted tools like this.
+
+- **LICENSE** — replaced MIT with full AGPL-3.0 text
+- **README** — updated badge and license section
 
 ### 2026.8.8 — Live Log Viewer
 
@@ -348,4 +355,4 @@ hombre/
 
 ## License
 
-MIT
+[AGPL-3.0](LICENSE)
