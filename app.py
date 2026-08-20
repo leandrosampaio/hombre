@@ -31,6 +31,7 @@ log = logging.getLogger("hombre")
 
 HONCHO_URL = os.environ.get("HONCHO_URL", "http://localhost:8000")
 HONCHO_API_KEY = os.environ.get("HONCHO_API_KEY", "")
+HONCHO_WORKSPACE_ID = os.environ.get("HONCHO_WORKSPACE_ID", "")
 ALLOWED_REQUEST_HEADERS = {"content-type", "accept", "accept-encoding", "user-agent"}
 ALLOWED_RESPONSE_HEADERS = {"content-type", "content-length", "location"}
 VALID_ID = re.compile(r"^[a-zA-Z0-9_-]+$")
@@ -119,6 +120,16 @@ async def auth_status(request: Request):
     configured = supabase_configured() or bool(_users_cache)
     user = getattr(request.state, "user", None) or None
     return {"configured": configured, "user": user}
+
+
+@app.post("/api/workspaces/list")
+async def list_workspaces():
+    """List workspaces or expose the configured scope for a limited key."""
+    if HONCHO_WORKSPACE_ID:
+        return {"items": [{"id": HONCHO_WORKSPACE_ID}]}
+
+    response = await _client.post("/v3/workspaces/list", json={})
+    return JSONResponse(response.json(), status_code=response.status_code)
 
 
 @app.post("/api/workspaces/{wid}/peers/{pid}/chat")

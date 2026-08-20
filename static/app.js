@@ -46,6 +46,7 @@ const App = {
       const action = btn.dataset.action;
       const id = btn.dataset.id;
       if (action === 'toggle-card') PeersTab.toggleCard(id);
+      else if (action === 'edit-peer') PeersTab.editPeer(id);
       else if (action === 'toggle-messages') SessionsTab.toggleMessages(id);
       else if (action === 'toggle-summary') SessionsTab.toggleSummary(id);
       else if (action === 'search-conclusions') ConclusionsTab.search();
@@ -1240,6 +1241,7 @@ const PeersTab = {
                 <td class="mono">${App.formatDate(p.created_at)}</td>
                 <td class="flex gap-2">
                   <button class="btn btn-ghost btn-sm" data-action="toggle-card" data-id="${App.escapeAttr(p.id)}">Card</button>
+                  <button class="btn btn-ghost btn-sm" data-action="edit-peer" data-id="${App.escapeAttr(p.id)}">Edit</button>
                   <button class="btn-delete-inline" data-action="delete-peer" data-id="${App.escapeAttr(p.id)}" title="Delete peer">&times;</button>
                 </td>
               </tr>
@@ -1291,6 +1293,67 @@ const PeersTab = {
       await App.loadPeersAndSessions();
       App.renderTab(App.state.activeTab);
     });
+  },
+
+  editPeer(peerId) {
+    const peer = App.state.peers.find(item => item.id === peerId);
+    if (!peer) return;
+
+    const metadataLabel = document.createElement('label');
+    metadataLabel.textContent = 'Metadata (JSON)';
+    const metadata = document.createElement('textarea');
+    metadata.id = 'peer-metadata';
+    metadata.className = 'input mt-2';
+    metadata.rows = 4;
+    metadata.spellcheck = false;
+    metadata.value = JSON.stringify(peer.metadata || {}, null, 2);
+
+    const observeRow = document.createElement('label');
+    observeRow.className = 'flex items-center gap-2 mt-3';
+    const observe = document.createElement('input');
+    observe.type = 'checkbox';
+    observe.id = 'peer-observe-me';
+    observe.checked = peer.configuration?.observe_me !== false;
+    const observeText = document.createElement('span');
+    observeText.className = 'text-sm';
+    observeText.textContent = 'Build and update this peer\'s global representation';
+    observeRow.append(observe, observeText);
+
+    const note = document.createElement('p');
+    note.className = 'text-xs text-muted mt-3';
+    note.textContent = 'Disabling observation stops new reasoning about this peer. It does not delete existing memories.';
+
+    Modal.show(`Edit Peer: ${peer.id}`, [metadataLabel, metadata, observeRow, note], async () => {
+      let parsedMetadata;
+      try {
+        parsedMetadata = JSON.parse(metadata.value || '{}');
+      } catch {
+        App.toast('Metadata must be valid JSON', 'warning');
+        return;
+      }
+      if (!parsedMetadata || Array.isArray(parsedMetadata) || typeof parsedMetadata !== 'object') {
+        App.toast('Metadata must be a JSON object', 'warning');
+        return;
+      }
+
+      try {
+        const ws = App.state.workspace;
+        const updated = await App.api(`workspaces/${ws.id}/peers/${peer.id}`, {
+          method: 'PUT',
+          body: {
+            metadata: parsedMetadata,
+            configuration: { observe_me: document.getElementById('peer-observe-me').checked },
+          },
+        });
+        const index = App.state.peers.findIndex(item => item.id === peer.id);
+        if (index >= 0) App.state.peers[index] = updated;
+        Modal.close();
+        App.renderTab(App.state.activeTab);
+        App.toast('Peer updated', 'success');
+      } catch (e) {
+        App.toast(`Update failed: ${e.message}`, 'error');
+      }
+    }, { confirmText: 'Save', confirmClass: 'btn btn-primary' });
   },
 
   async deletePeer(id, btnEl) {
@@ -1490,6 +1553,7 @@ const SessionsTab = {
                 <td class="mono">${App.formatDate(s.created_at)}</td>
                 <td class="flex gap-2">
                   <button class="btn btn-ghost btn-sm" data-action="toggle-messages" data-id="${App.escapeAttr(s.id)}">Messages</button>
+                  <button class="btn btn-ghost btn-sm" data-action="edit-session" data-id="${App.escapeAttr(s.id)}">Edit</button>
                   <button class="btn btn-ghost btn-sm" data-action="delete-session" data-id="${App.escapeAttr(s.id)}" style="color:var(--destructive)">Delete</button>
                 </td>
               </tr>
@@ -1517,6 +1581,14 @@ const SessionsTab = {
     `;
 
     document.getElementById('create-session-btn').addEventListener('click', () => this.createSession());
+
+    el.querySelectorAll('[data-action="edit-session"]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const session = App.state.sessions.find(s => s.id === btn.dataset.id);
+        if (session) this.editSession(session);
+      });
+    });
 
     el.querySelectorAll('[data-action="delete-session"]').forEach(btn => {
       btn.addEventListener('click', async (e) => {
@@ -1562,6 +1634,88 @@ const SessionsTab = {
       await App.loadPeersAndSessions();
       App.renderTab(App.state.activeTab);
     });
+  },
+
+  editSession(session) {
+    const configuration = session.configuration || {};
+    const metadataLabel = document.createElement('label');
+    metadataLabel.textContent = 'Metadata (JSON)';
+    const metadata = document.createElement('textarea');
+    metadata.id = 'session-metadata';
+    metadata.className = 'input mt-2';
+    metadata.rows = 4;
+    metadata.spellcheck = false;
+    metadata.value = JSON.stringify(session.metadata || {}, null, 2);
+
+    const settings = [
+      ['reasoning', 'Enable reasoning and memory extraction', configuration.reasoning?.enabled !== false],
+      ['summary', 'Generate session summaries', configuration.summary?.enabled !== false],
+      ['dream', 'Allow dream consolidation', configuration.dream?.enabled !== false],
+      ['peer-card', 'Create and use peer cards', configuration.peer_card?.create !== false && configuration.peer_card?.use !== false],
+    ];
+    const settingsContainer = document.createElement('div');
+    settingsContainer.className = 'mt-3';
+    settingsContainer.innerHTML = '<div class="text-xs font-medium text-muted mb-2">Processing</div>';
+    settings.forEach(([key, label, checked]) => {
+      const row = document.createElement('label');
+      row.className = 'flex items-center gap-2 mb-2';
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.id = `session-${key}`;
+      input.checked = checked;
+      const text = document.createElement('span');
+      text.className = 'text-sm';
+      text.textContent = label;
+      row.append(input, text);
+      settingsContainer.appendChild(row);
+    });
+
+    const note = document.createElement('p');
+    note.className = 'text-xs text-muted mt-3';
+    note.textContent = 'Disabling reasoning also prevents summaries, peer cards, and dreams for this session.';
+
+    Modal.show(`Edit Session: ${session.id}`, [metadataLabel, metadata, settingsContainer, note], async () => {
+      let parsedMetadata;
+      try {
+        parsedMetadata = JSON.parse(metadata.value || '{}');
+      } catch {
+        App.toast('Metadata must be valid JSON', 'warning');
+        return;
+      }
+      if (!parsedMetadata || Array.isArray(parsedMetadata) || typeof parsedMetadata !== 'object') {
+        App.toast('Metadata must be a JSON object', 'warning');
+        return;
+      }
+
+      const reasoningEnabled = document.getElementById('session-reasoning').checked;
+      const summaryEnabled = document.getElementById('session-summary').checked;
+      const dreamEnabled = document.getElementById('session-dream').checked;
+      const peerCardEnabled = document.getElementById('session-peer-card').checked;
+      const payload = {
+        metadata: parsedMetadata,
+        configuration: {
+          reasoning: { enabled: reasoningEnabled },
+          summary: { enabled: summaryEnabled },
+          dream: { enabled: dreamEnabled },
+          peer_card: { create: peerCardEnabled, use: peerCardEnabled },
+        },
+      };
+
+      try {
+        const ws = App.state.workspace;
+        const updated = await App.api(`workspaces/${ws.id}/sessions/${session.id}`, {
+          method: 'PUT',
+          body: payload,
+        });
+        const index = App.state.sessions.findIndex(s => s.id === session.id);
+        if (index >= 0) App.state.sessions[index] = updated;
+        Modal.close();
+        App.renderTab(App.state.activeTab);
+        App.toast('Session updated', 'success');
+      } catch (e) {
+        App.toast(`Update failed: ${e.message}`, 'error');
+      }
+    }, { confirmText: 'Save', confirmClass: 'btn btn-primary' });
   },
 
   async toggleMessages(sessionId) {
