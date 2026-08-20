@@ -312,7 +312,10 @@ async def list_all_sessions(wid: str):
 # Honcho container log streaming & status endpoints
 # ---------------------------------------------------------------------------
 
-_HONCHO_CONTAINERS = {"deriver": "honcho-deriver-1", "api": "honcho-api-1"}
+_HONCHO_CONTAINERS = {
+    "deriver": os.environ.get("HONCHO_DERIVER_CONTAINER", "honcho-deriver-1"),
+    "api": os.environ.get("HONCHO_API_CONTAINER", "honcho-api-1"),
+}
 
 
 @app.get("/api/honcho/containers")
