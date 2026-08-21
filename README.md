@@ -27,12 +27,6 @@ Built entirely with AI coding tools ([OpenCode](https://opencode.ai) + [MiMo](ht
 
 This project is actively maintained. Here's what's landed recently.
 
-### 2026.8.3 — Fix: Chat Streaming Route Precedence
-
-Fixed the chat UI showing `(No response)` even though Honcho successfully returned a streamed response. The generic workspace proxy was catching chat requests before the dedicated streaming route could handle them.
-
-- **[PR #1](https://github.com/lovethatbrandx/hombre/pull/1)** — Fixed route ordering so SSE chat responses stream correctly instead of being returned as JSON. Thanks **[golewm](https://github.com/golewm)**!
-
 ### 2026.8.21 — Community Contributions: Workspace Fix + Configurable Container Names
 
 Two community PRs that make Hombre more robust and portable.
@@ -54,6 +48,12 @@ Added real-time streaming logs from your Honcho server directly in the dashboard
 - **Backend**: SSE endpoint at `/api/honcho/logs/{container}` streams logs from any Honcho Docker container
 - **Frontend**: "System → Honcho Logs" section in the sidebar with container selection and configurable tail lines
 - **Streaming**: Server-Sent Events for real-time output — logs appear as they happen
+
+### 2026.8.3 — Fix: Chat Streaming Route Precedence
+
+Fixed the chat UI showing `(No response)` even though Honcho successfully returned a streamed response. The generic workspace proxy was catching chat requests before the dedicated streaming route could handle them.
+
+- **[PR #1](https://github.com/lovethatbrandx/hombre/pull/1)** — Fixed route ordering so SSE chat responses stream correctly instead of being returned as JSON. Thanks **[golewm](https://github.com/golewm)**!
 
 ### What's Next
 
