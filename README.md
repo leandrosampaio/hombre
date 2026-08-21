@@ -27,6 +27,13 @@ Built entirely with AI coding tools ([OpenCode](https://opencode.ai) + [MiMo](ht
 
 This project is actively maintained. Here's what's landed recently.
 
+### 2026.8.21 — Community Contributions: Workspace Fix + Configurable Container Names
+
+Two community PRs that make Hombre more robust and portable.
+
+- **[PR #2](https://github.com/lovethatbrandx/hombre/pull/2)** — Fixed workspace creation failing with 405 Method Not Allowed. Honcho changed their backend endpoint; the frontend now sends requests to `workspaces` instead of `workspaces/create`. Thanks **[steve-bate](https://github.com/steve-bate)**!
+- **[PR #3](https://github.com/lovethatbrandx/hombre/pull/3)** — Made Honcho log viewer container names configurable via environment variables (`HONCHO_API_CONTAINER` and `HONCHO_DERIVER_CONTAINER`). Default values preserve existing Docker Compose behavior, but you can now customize them for platforms like Coolify that append deployment identifiers to container names. Thanks **[leandrosampaio](https://github.com/leandrosampaio)**!
+
 ### 2026.8.14 — License Change: MIT → AGPL-3.0
 
 Switched from MIT to AGPL-3.0 to align with the Honcho and broader open-source community. This ensures derivative works remain open source, which is important for self-hosted tools like this.
