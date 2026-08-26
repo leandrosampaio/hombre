@@ -2,6 +2,7 @@ import os
 import re
 import asyncio
 import logging
+import hashlib
 from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import unquote
@@ -38,6 +39,12 @@ VALID_ID = re.compile(r"^[a-zA-Z0-9_-]+$")
 
 static_dir = Path(__file__).parent / "static"
 _client: httpx.AsyncClient | None = None
+
+
+def _asset_version(filename: str) -> str:
+    """Return a stable content hash used to invalidate browser asset caches."""
+    content = (static_dir / filename).read_bytes()
+    return hashlib.sha256(content).hexdigest()[:12]
 
 
 @asynccontextmanager
@@ -522,7 +529,13 @@ async def proxy(path: str, request: Request):
 async def index():
     # CRITICAL FIX: Path.read_text() is synchronous I/O that blocks the
     # event loop. Move to a thread pool.
-    html = await asyncio.to_thread((static_dir / "index.html").read_text)
+    html, app_version, style_version = await asyncio.gather(
+        asyncio.to_thread((static_dir / "index.html").read_text),
+        asyncio.to_thread(_asset_version, "app.js"),
+        asyncio.to_thread(_asset_version, "style.css"),
+    )
+    html = html.replace("/static/app.js\"", f"/static/app.js?v={app_version}\"")
+    html = html.replace("/static/style.css\"", f"/static/style.css?v={style_version}\"")
     return HTMLResponse(html)
 
 
