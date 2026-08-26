@@ -73,6 +73,7 @@ node --check static/app.js
 - Schedule dream: `POST /v3/workspaces/{wid}/schedule_dream` — triggers a sync/dream cycle; requires `observer` (peer ID) and `dream_type` in body
 - Queue status: `GET /v3/workspaces/{wid}/queue/status` — returns work unit progress (pending/done/total)
 - Workspace delete: `DELETE /v3/workspaces/{wid}` (requires deleting all sessions first)
+- Workspace update: `PUT /v3/workspaces/{wid}` with `metadata`
 - Session delete: `DELETE /v3/workspaces/{wid}/sessions/{sid}`
 - Conclusion delete: `DELETE /v3/workspaces/{wid}/conclusions/{cid}` (moves to trash locally first)
 - Message delete: `DELETE /v3/workspaces/{wid}/sessions/{sid}/messages/{mid}`
@@ -101,8 +102,9 @@ node --check static/app.js
 - `POST /api/soft-delete/restore` — Restore a deleted resource
 
 ### Pagination Helpers (`app.py`)
-- `POST /api/workspaces/{wid}/conclusions/list/all` — Fetch ALL conclusions (paginated, up to 5000)
-- `POST /api/workspaces/{wid}/sessions/{sid}/messages/list/all` — Fetch ALL messages (paginated, up to 5000)
+- `POST /api/workspaces/{wid}/peers/list/all` — Fetch ALL peers (paginated, up to 5000)
+- `POST /api/workspaces/{wid}/conclusions/list/all` — Fetch ALL conclusions with optional Honcho filters (paginated, up to 5000)
+- `POST /api/workspaces/{wid}/sessions/{sid}/messages/list/all` — Fetch ALL messages with optional Honcho filters (paginated, up to 5000)
 
 ### Notifications (`routes/notifications.py`)
 - `GET /api/notifications` — Get active notifications (optional `?type=`, `?workspace_id=`)

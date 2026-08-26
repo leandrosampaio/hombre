@@ -50,6 +50,7 @@ const App = {
       else if (action === 'toggle-messages') SessionsTab.toggleMessages(id);
       else if (action === 'toggle-summary') SessionsTab.toggleSummary(id);
       else if (action === 'search-conclusions') ConclusionsTab.search();
+      else if (action === 'export-filtered-conclusions') ConclusionsTab.exportFiltered();
       else if (action === 'load-messages') MessagesTab.load();
       else if (action === 'send-chat') ChatTab.send();
       else if (action === 'load-more-messages') MessagesTab.loadMore();
@@ -189,10 +190,10 @@ const App = {
     if (!ws) return;
     try {
       const [peers, sessions] = await Promise.all([
-        this.api(`workspaces/${ws.id}/peers/list`, { body: {} }),
+        this.api(`workspaces/${ws.id}/peers/list/all`, { body: {} }),
         this.api(`workspaces/${ws.id}/sessions/list/all`, { body: {} }),
       ]);
-      this.state.peers = peers.items || [];
+      this.state.peers = peers.peers || [];
       this.state.sessions = sessions.sessions || [];
     } catch (err) {
       if (this.isRateLimited(err)) {
@@ -1059,10 +1060,10 @@ const OverviewTab = {
     let peerCount = 0, sessionCount = 0, conclusionCount = 0;
     try {
       const [peersData, sessionsData] = await Promise.all([
-        App.api(`workspaces/${ws.id}/peers/list`, { body: {} }),
+        App.api(`workspaces/${ws.id}/peers/list/all`, { body: {} }),
         App.api(`workspaces/${ws.id}/sessions/list/all`, { body: {} }),
       ]);
-      peerCount = (peersData.items || []).length;
+      peerCount = (peersData.peers || []).length;
       sessionCount = (sessionsData.sessions || []).length;
       const conclusions = await App.api(`workspaces/${ws.id}/conclusions/list`, { body: {} });
       conclusionCount = conclusions.total || 0;
@@ -1070,8 +1071,16 @@ const OverviewTab = {
 
     el.innerHTML = `
       <div class="tab-header">
-        <h2>Overview</h2>
-        <p>Workspace summary and health status</p>
+        <div class="flex items-center justify-between">
+          <div>
+            <h2>Overview</h2>
+            <p>Workspace summary and health status</p>
+          </div>
+          <div class="flex gap-2">
+            <button class="btn btn-ghost" id="refresh-overview-btn">Refresh all</button>
+            <button class="btn btn-ghost" id="edit-workspace-btn">Edit Workspace</button>
+          </div>
+        </div>
       </div>
       <div class="stats-grid">
         <div class="stat-card">
@@ -1130,6 +1139,13 @@ const OverviewTab = {
       </div>
     `;
 
+    document.getElementById('edit-workspace-btn').addEventListener('click', () => this.editWorkspace(ws.id));
+    document.getElementById('refresh-overview-btn').addEventListener('click', async () => {
+      await App.loadWorkspaces();
+      await App.loadPeersAndSessions();
+      this.render(el);
+    });
+
     el.querySelectorAll('[data-action="delete-workspace"]').forEach(btn => {
       btn.addEventListener('click', async () => {
         const wsId = btn.dataset.id;
@@ -1176,6 +1192,54 @@ const OverviewTab = {
         }
       });
     }
+  },
+
+  editWorkspace(workspaceId) {
+    const workspace = App.state.workspaces.find(item => item.id === workspaceId);
+    if (!workspace) return;
+
+    const metadataLabel = document.createElement('label');
+    metadataLabel.textContent = 'Metadata (JSON)';
+    const metadata = document.createElement('textarea');
+    metadata.id = 'workspace-metadata';
+    metadata.className = 'input mt-2';
+    metadata.rows = 6;
+    metadata.spellcheck = false;
+    metadata.value = JSON.stringify(workspace.metadata || {}, null, 2);
+
+    const note = document.createElement('p');
+    note.className = 'text-xs text-muted mt-3';
+    note.textContent = 'Workspace IDs cannot be changed.';
+
+    Modal.show(`Edit Workspace: ${workspace.id}`, [metadataLabel, metadata, note], async () => {
+      let parsedMetadata;
+      try {
+        parsedMetadata = JSON.parse(metadata.value || '{}');
+      } catch {
+        App.toast('Metadata must be valid JSON', 'warning');
+        return;
+      }
+      if (!parsedMetadata || Array.isArray(parsedMetadata) || typeof parsedMetadata !== 'object') {
+        App.toast('Metadata must be a JSON object', 'warning');
+        return;
+      }
+
+      try {
+        const updated = await App.api(`workspaces/${workspace.id}`, {
+          method: 'PUT',
+          body: { metadata: parsedMetadata },
+        });
+        const index = App.state.workspaces.findIndex(item => item.id === workspace.id);
+        if (index >= 0) App.state.workspaces[index] = { ...App.state.workspaces[index], ...updated };
+        if (App.state.workspace?.id === workspace.id) App.state.workspace = App.state.workspaces[index];
+        Modal.close();
+        App.renderWorkspaceSelect();
+        App.renderTab(App.state.activeTab);
+        App.toast('Workspace updated', 'success');
+      } catch (e) {
+        App.toast(`Update failed: ${e.message}`, 'error');
+      }
+    }, { confirmText: 'Save', confirmClass: 'btn btn-primary' });
   }
 };
 
@@ -1194,8 +1258,8 @@ const PeersTab = {
     if (!ws) { el.innerHTML = '<div class="empty-state"><h3>No workspace selected</h3></div>'; return; }
 
     try {
-      const data = await App.api(`workspaces/${ws.id}/peers/list`, { body: {} });
-      App.state.peers = data.items || [];
+      const data = await App.api(`workspaces/${ws.id}/peers/list/all`, { body: {} });
+      App.state.peers = data.peers || [];
     } catch { App.state.peers = []; }
 
     if (App.state.peers.length === 0) {
@@ -1223,13 +1287,17 @@ const PeersTab = {
         <div class="flex items-center justify-between">
           <div>
             <h2>Peers</h2>
-            <p>${App.state.peers.length} participant${App.state.peers.length !== 1 ? 's' : ''}</p>
+            <p id="peer-count">${App.state.peers.length} participant${App.state.peers.length !== 1 ? 's' : ''}</p>
           </div>
           <div class="flex gap-2">
             ${compareBtnHtml}
+            <button class="btn btn-ghost" id="refresh-peers-btn">Refresh</button>
             <button class="btn btn-primary" id="create-peer-btn">+ New Peer</button>
           </div>
         </div>
+      </div>
+      <div class="search-bar">
+        <input class="input" id="peer-search" type="search" placeholder="Search peers by ID..." aria-label="Search peers by ID" autocomplete="off">
       </div>
       <div class="table-wrap">
         <table>
@@ -1272,6 +1340,32 @@ const PeersTab = {
     `;
 
     document.getElementById('create-peer-btn').addEventListener('click', () => this.createPeer());
+    document.getElementById('refresh-peers-btn').addEventListener('click', () => this.render(el));
+    document.getElementById('peer-search').addEventListener('input', (event) => {
+      this.filterPeers(event.target.value);
+    });
+  },
+
+  filterPeers(query) {
+    const normalizedQuery = query.trim().toLowerCase();
+    const rows = document.querySelectorAll('tr[data-peer]');
+    let visible = 0;
+
+    rows.forEach(row => {
+      const matches = row.dataset.peer.toLowerCase().includes(normalizedQuery);
+      row.style.display = matches ? '' : 'none';
+      const detailRow = row.nextElementSibling;
+      if (detailRow) detailRow.style.display = matches ? '' : 'none';
+      if (matches) visible += 1;
+    });
+
+    const count = document.getElementById('peer-count');
+    if (count) {
+      const total = App.state.peers.length;
+      count.textContent = normalizedQuery
+        ? `${visible} of ${total} participant${total !== 1 ? 's' : ''}`
+        : `${total} participant${total !== 1 ? 's' : ''}`;
+    }
   },
 
   createPeer() {
@@ -1493,7 +1587,9 @@ const PeersTab = {
 
 /* ─── Sessions Tab ─── */
 const SessionsTab = {
-  async render(el) {
+  query: '',
+
+  async render(el, refresh = true) {
     el.innerHTML = `
       <div class="tab-header">
         <h2>Sessions</h2>
@@ -1505,10 +1601,12 @@ const SessionsTab = {
     const ws = App.state.workspace;
     if (!ws) { el.innerHTML = '<div class="empty-state"><h3>No workspace selected</h3></div>'; return; }
 
-    try {
-      const data = await App.api(`workspaces/${ws.id}/sessions/list/all`, { body: {} });
-      App.state.sessions = data.sessions || [];
-    } catch { App.state.sessions = []; }
+    if (refresh) {
+      try {
+        const data = await App.api(`workspaces/${ws.id}/sessions/list/all`, { body: {} });
+        App.state.sessions = data.sessions || [];
+      } catch { App.state.sessions = []; }
+    }
 
     if (App.state.sessions.length === 0) {
       el.innerHTML = `
@@ -1526,21 +1624,30 @@ const SessionsTab = {
       return;
     }
 
-    const total = App.state.sessions.length;
+    const filteredSessions = App.state.sessions.filter(session =>
+      session.id.toLowerCase().includes(this.query.trim().toLowerCase())
+    );
+    const total = filteredSessions.length;
     const totalPages = Math.max(1, Math.ceil(total / App.state.sessionPageSize));
     if (App.state.sessionPage > totalPages) App.state.sessionPage = totalPages;
     const pageStart = (App.state.sessionPage - 1) * App.state.sessionPageSize;
-    const pageSessions = App.state.sessions.slice(pageStart, pageStart + App.state.sessionPageSize);
+    const pageSessions = filteredSessions.slice(pageStart, pageStart + App.state.sessionPageSize);
 
     el.innerHTML = `
       <div class="tab-header">
         <div class="flex items-center justify-between">
           <div>
             <h2>Sessions</h2>
-            <p>${total} session${total !== 1 ? 's' : ''}</p>
+            <p>${this.query ? `${total} matching ` : ''}${total} session${total !== 1 ? 's' : ''}</p>
           </div>
-          <button class="btn btn-primary" id="create-session-btn">+ New Session</button>
+          <div class="flex gap-2">
+            <button class="btn btn-ghost" id="refresh-sessions-btn">Refresh</button>
+            <button class="btn btn-primary" id="create-session-btn">+ New Session</button>
+          </div>
         </div>
+      </div>
+      <div class="search-bar">
+        <input class="input" id="session-search" type="search" placeholder="Search sessions by ID..." aria-label="Search sessions by ID" autocomplete="off" value="${App.escapeAttr(this.query)}">
       </div>
       <div class="table-wrap">
         <table>
@@ -1581,6 +1688,17 @@ const SessionsTab = {
     `;
 
     document.getElementById('create-session-btn').addEventListener('click', () => this.createSession());
+    document.getElementById('refresh-sessions-btn').addEventListener('click', () => this.render(el));
+    let searchTimer;
+    document.getElementById('session-search').addEventListener('input', (event) => {
+      const query = event.target.value;
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => {
+        this.query = query;
+        App.state.sessionPage = 1;
+        this.render(el, false);
+      }, 250);
+    });
 
     el.querySelectorAll('[data-action="edit-session"]').forEach(btn => {
       btn.addEventListener('click', (e) => {
@@ -1965,13 +2083,11 @@ const ChatTab = {
 const ConclusionsTab = {
   state: {
     items: [],
-    currentPeerId: null,
     currentQuery: null,
   },
 
   resetState() {
     this.state.items = [];
-    this.state.currentPeerId = null;
     App.state.conclusionPage = 1;
   },
 
@@ -1984,58 +2100,79 @@ const ConclusionsTab = {
             <h2>Conclusions</h2>
             <p>Reasoning and memories extracted by Honcho</p>
           </div>
-          <button class="btn btn-ghost" data-action="view-trash">View Trash</button>
+          <div class="flex gap-2">
+            <button class="btn btn-ghost" id="export-filtered-conclusions-btn" data-action="export-filtered-conclusions">Export filtered</button>
+            <button class="btn btn-ghost" data-action="view-trash">View Trash</button>
+          </div>
         </div>
       </div>
       <div class="search-bar">
-        <select class="input" id="conclusion-peer" style="max-width:250px" aria-label="Select peer">
-          <option value="">Select peer...</option>
+        <select class="input" id="conclusion-session" style="max-width:280px" aria-label="Filter by session">
+          <option value="">All sessions</option>
+          ${App.state.sessions.map(s => `<option value="${App.escapeHtml(s.id)}">${App.escapeHtml(s.id)}</option>`).join('')}
+        </select>
+        <select class="input" id="conclusion-about-peer" style="max-width:220px" aria-label="Filter by related peer">
+          <option value="">About any peer</option>
           ${App.state.peers.map(p => `<option value="${App.escapeHtml(p.id)}">${App.escapeHtml(p.id)}</option>`).join('')}
         </select>
-        <input type="text" class="input" id="conclusion-search" placeholder="Semantic search (select a peer first)..." disabled aria-label="Search conclusions">
-        <button class="btn btn-primary" id="conclusion-search-btn" data-action="search-conclusions" disabled>Search</button>
+        <select class="input" id="conclusion-made-by-peer" style="max-width:220px" aria-label="Filter by peer who made the conclusion">
+          <option value="">Made by any peer</option>
+          ${App.state.peers.map(p => `<option value="${App.escapeHtml(p.id)}">${App.escapeHtml(p.id)}</option>`).join('')}
+        </select>
+        <select class="input" id="conclusion-sort" style="max-width:160px" aria-label="Sort conclusions">
+          <option value="newest">Newest first</option>
+          <option value="oldest">Oldest first</option>
+        </select>
+      </div>
+      <div class="search-bar">
+        <input type="search" class="input" id="conclusion-search" placeholder="Search conclusion text..." aria-label="Search conclusions">
+        <button class="btn btn-primary" id="conclusion-search-btn" data-action="search-conclusions">Load conclusions</button>
       </div>
       <div id="conclusion-results">
         <div class="empty-state">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:32px;height:32px"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-          <h3>Select a peer</h3>
-          <p>Choose a peer to view their conclusions, or use semantic search</p>
+          <h3>Explore conclusions</h3>
+          <p>Use the filters above, then load conclusions</p>
         </div>
       </div>
     `;
-
-    const peerSelect = document.getElementById('conclusion-peer');
-    const searchInput = document.getElementById('conclusion-search');
-    const searchBtn = document.getElementById('conclusion-search-btn');
-
-    peerSelect.addEventListener('change', () => {
-      const enabled = peerSelect.value !== '';
-      searchInput.disabled = !enabled;
-      searchBtn.disabled = !enabled;
-      if (enabled) {
-        this.resetState();
-        this.state.currentPeerId = peerSelect.value;
-        App.state.conclusionPage = 1;
-        this.loadConclusions(peerSelect.value);
-      }
-    });
   },
 
-  async loadConclusions(peerId) {
+  async loadConclusions() {
     const ws = App.state.workspace;
     const results = document.getElementById('conclusion-results');
     if (!results) return;
+
+    const sessionId = document.getElementById('conclusion-session').value;
+    const aboutPeerId = document.getElementById('conclusion-about-peer').value;
+    const madeByPeerId = document.getElementById('conclusion-made-by-peer').value;
+    const query = document.getElementById('conclusion-search').value.trim();
+    const sort = document.getElementById('conclusion-sort').value;
+    const filters = {};
+    if (sessionId) filters.session_id = sessionId;
+    if (aboutPeerId) filters.observed_id = aboutPeerId;
+    if (madeByPeerId) filters.observer_id = madeByPeerId;
 
     results.innerHTML = '<div class="loading-overlay"><div class="spinner"></div> Loading...</div>';
 
     try {
       const data = await App.api(`workspaces/${ws.id}/conclusions/list/all`, {
-        body: {
-          filters: { observer_id: peerId },
-        }
+        body: { filters }
       });
-      this.state.items = data.conclusions || [];
-      this.state.currentQuery = null;
+      const queryLower = query.toLowerCase();
+      this.state.items = (data.conclusions || []).filter(conclusion => {
+        const matchesSession = !sessionId || conclusion.session_id === sessionId;
+        const matchesAbout = !aboutPeerId || conclusion.observed_id === aboutPeerId;
+        const matchesMadeBy = !madeByPeerId || conclusion.observer_id === madeByPeerId;
+        const matchesQuery = !queryLower || (conclusion.content || '').toLowerCase().includes(queryLower);
+        return matchesSession && matchesAbout && matchesMadeBy && matchesQuery;
+      }).sort((a, b) => {
+        const aDate = new Date(a.created_at || 0).getTime();
+        const bDate = new Date(b.created_at || 0).getTime();
+        return sort === 'oldest' ? aDate - bDate : bDate - aDate;
+      });
+      this.state.currentQuery = query || null;
+      App.state.conclusionPage = 1;
       this.renderResults(results, this.state.items);
     } catch {
       results.innerHTML = '<div class="text-sm text-muted">Failed to load conclusions</div>';
@@ -2043,58 +2180,24 @@ const ConclusionsTab = {
   },
 
   async search() {
-    const peerId = document.getElementById('conclusion-peer').value;
-    const query = document.getElementById('conclusion-search').value.trim();
-    if (!query || !peerId) return;
+    await this.loadConclusions();
+  },
 
-    const ws = App.state.workspace;
-    const results = document.getElementById('conclusion-results');
-    if (!results) return;
-
-    // Reset state for new search
-    this.state.items = [];
-    this.state.currentQuery = query;
-    App.state.conclusionPage = 1;
-
-    results.innerHTML = '<div class="loading-overlay"><div class="spinner"></div> Searching...</div>';
-
-    try {
-      // Step 1: Semantic search for top 100 most relevant
-      const semanticItems = await App.api(`workspaces/${ws.id}/conclusions/query`, {
-        body: { query, top_k: 100, filters: { observer: peerId, observed: peerId } }
-      });
-      const semanticResults = Array.isArray(semanticItems) ? semanticItems : [];
-
-      // Filter semantic results to only keep items that actually contain the keyword
-      const queryLower = query.toLowerCase();
-      const filteredSemanticResults = semanticResults.filter(item =>
-        item.content && item.content.toLowerCase().includes(queryLower)
-      );
-      const filteredIds = new Set(filteredSemanticResults.map(c => c.id));
-
-      // Step 2: Fetch ALL conclusions and find text matches
-      const extraMatches = [];
-      const allData = await App.api(`workspaces/${ws.id}/conclusions/list/all`, {
-        body: { filters: { observer_id: peerId } }
-      });
-      const allItems = allData.conclusions || [];
-
-      for (const item of allItems) {
-        if (!filteredIds.has(item.id) && item.content && item.content.toLowerCase().includes(queryLower)) {
-          extraMatches.push(item);
-          filteredIds.add(item.id);
-        }
-      }
-
-      // Combine: filtered semantic results first (more relevant), then additional text matches
-      const allResults = [...filteredSemanticResults, ...extraMatches];
-      this.state.items = allResults;
-      this.renderResults(results, allResults);
-    } catch {
-      this.state.items = [];
-      this.state.currentQuery = null;
-      results.innerHTML = '<div class="text-sm text-muted">Search failed — try a different term</div>';
-    }
+  exportFiltered() {
+    const exportData = {
+      hombre_export: true,
+      version: 1,
+      export_date: new Date().toISOString(),
+      workspace_id: App.state.workspace?.id,
+      data: { conclusions: this.state.items },
+    };
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `hombre-conclusions-${App.state.workspace?.id || 'export'}-${Date.now()}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
   },
 
   highlightKeyword(text, keyword) {
@@ -2291,18 +2394,22 @@ const MessagesTab = {
   state: {
     items: [],
     offset: 0,
+    rawOffset: 0,
     limit: 20,
     allLoaded: false,
     currentSessionId: null,
     currentPeerFilter: null,
+    currentQuery: '',
   },
 
   resetState() {
     this.state.items = [];
     this.state.offset = 0;
+    this.state.rawOffset = 0;
     this.state.allLoaded = false;
     this.state.currentSessionId = null;
     this.state.currentPeerFilter = null;
+    this.state.currentQuery = '';
   },
 
   async render(el) {
@@ -2321,13 +2428,14 @@ const MessagesTab = {
           <option value="">All peers</option>
           ${App.state.peers.map(p => `<option value="${App.escapeHtml(p.id)}">${App.escapeHtml(p.id)}</option>`).join('')}
         </select>
+        <input type="search" class="input" id="msg-search" placeholder="Search message content..." aria-label="Search message content">
         <button class="btn btn-primary" data-action="load-messages">Load</button>
       </div>
       <div id="msg-results">
         <div class="empty-state">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:32px;height:32px"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/></svg>
-          <h3>Select a session</h3>
-          <p>Choose a session to browse its messages</p>
+          <h3>Search messages</h3>
+          <p>Select a session for a quick browse, or leave it empty to search all sessions</p>
         </div>
       </div>
     `;
@@ -2336,21 +2444,52 @@ const MessagesTab = {
   async load() {
     const sessionId = document.getElementById('msg-session').value;
     const peerFilter = document.getElementById('msg-peer').value;
+    const query = document.getElementById('msg-search').value.trim().toLowerCase();
     const results = document.getElementById('msg-results');
-
-    if (!sessionId) {
-      results.innerHTML = '<div class="text-sm text-muted">Please select a session</div>';
-      return;
-    }
 
     // Reset state when loading fresh
     this.state.items = [];
     this.state.offset = 0;
+    this.state.rawOffset = 0;
     this.state.allLoaded = false;
     this.state.currentSessionId = sessionId;
     this.state.currentPeerFilter = peerFilter;
+    this.state.currentQuery = query;
 
-    await this.fetchMessages();
+    if (sessionId) await this.fetchMessages();
+    else await this.searchAllSessions();
+  },
+
+  async searchAllSessions() {
+    const results = document.getElementById('msg-results');
+    const ws = App.state.workspace;
+    if (!results || !ws) return;
+
+    results.innerHTML = '<div class="loading-overlay"><div class="spinner"></div> Searching all sessions...</div>';
+
+    try {
+      const allMessages = [];
+      for (const session of App.state.sessions) {
+        const data = await App.api(`workspaces/${ws.id}/sessions/${session.id}/messages/list/all`, { body: {} });
+        for (const message of data.messages || []) {
+          allMessages.push({ ...message, session_id: session.id });
+        }
+      }
+      this.state.items = this.filterMessages(allMessages);
+      this.state.allLoaded = true;
+      this.renderMessages(results, this.state.items);
+    } catch {
+      results.innerHTML = '<div class="text-sm text-muted">Failed to search messages</div>';
+    }
+  },
+
+  filterMessages(messages) {
+    const { currentPeerFilter, currentQuery } = this.state;
+    return messages.filter(message => {
+      const matchesPeer = !currentPeerFilter || message.peer_id === currentPeerFilter;
+      const matchesQuery = !currentQuery || (message.content || '').toLowerCase().includes(currentQuery);
+      return matchesPeer && matchesQuery;
+    });
   },
 
   async fetchMessages() {
@@ -2358,9 +2497,10 @@ const MessagesTab = {
     if (!results) return;
 
     const ws = App.state.workspace;
-    const { currentSessionId, currentPeerFilter, offset, limit } = this.state;
+    const { currentSessionId, currentPeerFilter, rawOffset, limit } = this.state;
+    const offset = rawOffset;
 
-    if (this.state.offset === 0) {
+    if (offset === 0) {
       results.innerHTML = '<div class="loading-overlay"><div class="spinner"></div> Loading...</div>';
     }
 
@@ -2373,7 +2513,9 @@ const MessagesTab = {
       });
 
       const newMessages = data.items || [];
-      this.state.items = offset === 0 ? newMessages : [...this.state.items, ...newMessages];
+      const combined = offset === 0 ? newMessages : [...this.state.items, ...newMessages];
+      this.state.items = this.filterMessages(combined);
+      this.state.rawOffset += newMessages.length;
       this.state.allLoaded = newMessages.length < limit;
       this.renderMessages(results, this.state.items);
     } catch {
@@ -2382,13 +2524,15 @@ const MessagesTab = {
   },
 
   async loadMore() {
-    this.state.offset = this.state.items.length;
     await this.fetchMessages();
   },
 
   renderMessages(container, messages) {
     if (messages.length === 0) {
-      container.innerHTML = '<div class="text-sm text-muted">No messages found</div>';
+      container.innerHTML = `
+        <div class="text-sm text-muted">No messages found</div>
+        ${this.state.allLoaded ? '' : '<div class="load-more-wrap"><button class="btn-load-more" data-action="load-more-messages">Load More</button></div>'}
+      `;
       return;
     }
 
@@ -2409,7 +2553,12 @@ const MessagesTab = {
               return `
                 <tr data-message-id="${App.escapeAttr(mid)}">
                   <td><code>${App.escapeHtml(m.peer_id)}</code></td>
-                  <td class="truncate" title="${App.escapeHtml(m.content)}">${App.escapeHtml(m.content.substring(0, 150))}${m.content.length > 150 ? '...' : ''}</td>
+                  <td>
+                    <details>
+                      <summary class="truncate" title="${App.escapeHtml(m.content || '')}">${App.escapeHtml((m.content || '').substring(0, 150))}${(m.content || '').length > 150 ? '...' : ''}</summary>
+                      <div class="representation-box mt-2">${App.escapeHtml(m.content || '')}</div>
+                    </details>
+                  </td>
                   <td class="mono">${m.token_count || '—'}</td>
                   <td class="mono">${App.formatDateTime(m.created_at)}</td>
                   <td>

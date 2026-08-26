@@ -433,8 +433,10 @@ These are Honcho API endpoints available through the proxy:
 |--------|------|-------------|
 | POST | `/api/workspaces/list` | List all workspaces |
 | POST | `/api/workspaces/create` | Create a workspace (`{"id": "..."}`) |
+| PUT | `/api/workspaces/{wid}` | Update workspace metadata |
 | DELETE | `/api/workspaces/{wid}` | Delete a workspace |
 | POST | `/api/workspaces/{wid}/peers/list` | List peers in workspace |
+| POST | `/api/workspaces/{wid}/peers/list/all` | List all peers in workspace (paginated, up to 5000) |
 | POST | `/api/workspaces/{wid}/peers/create` | Create a peer (`{"id": "..."}`) |
 | POST | `/api/workspaces/{wid}/peers/{pid}/representation` | Get peer representation |
 | GET | `/api/workspaces/{wid}/peers/{pid}/card` | Get peer card |

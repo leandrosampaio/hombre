@@ -175,8 +175,56 @@ async def _honcho_post(path: str, body: dict | None = None) -> dict | list | Non
         return None
 
 
+@app.post("/api/workspaces/{wid}/peers/list/all")
+async def list_all_peers(wid: str):
+    """Fetch ALL peers for a workspace by paginating through them.
+
+    Honcho uses fastapi_pagination which reads page/size from QUERY
+    parameters, not the POST body.
+    """
+    if not VALID_ID.match(wid):
+        return JSONResponse({"error": "invalid_id"}, status_code=400)
+
+    all_peers = []
+    page = 1
+    size = 100
+    max_pages = 50  # safety limit: 50 pages * 100 = 5000 peers max
+
+    for _ in range(max_pages):
+        try:
+            resp = await _client.post(
+                f"/v3/workspaces/{wid}/peers/list",
+                json={},
+                params={"page": page, "size": size},
+            )
+            if resp.status_code >= 400:
+                log.warning("Honcho error %d on peers list page %d", resp.status_code, page)
+                break
+            result = resp.json()
+        except Exception as e:
+            log.error("Peers list failed page %d: %s", page, e)
+            break
+
+        if isinstance(result, list):
+            all_peers.extend(result)
+            if len(result) < size:
+                break
+        elif isinstance(result, dict):
+            items = result.get("items", result.get("peers", result.get("results", [])))
+            all_peers.extend(items)
+            total_pages = result.get("pages", 1)
+            if page >= total_pages or len(items) < size:
+                break
+        else:
+            break
+
+        page += 1
+
+    return {"peers": all_peers, "count": len(all_peers)}
+
+
 @app.post("/api/workspaces/{wid}/conclusions/list/all")
-async def list_all_conclusions(wid: str):
+async def list_all_conclusions(wid: str, request: Request):
     """Fetch ALL conclusions for a workspace by paginating through them.
 
     Honcho uses fastapi_pagination which reads page/size from QUERY
@@ -184,6 +232,11 @@ async def list_all_conclusions(wid: str):
     """
     if not VALID_ID.match(wid):
         return JSONResponse({"error": "invalid_id"}, status_code=400)
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
 
     all_conclusions = []
     page = 1
@@ -194,7 +247,7 @@ async def list_all_conclusions(wid: str):
         try:
             resp = await _client.post(
                 f"/v3/workspaces/{wid}/conclusions/list",
-                json={},
+                json=body,
                 params={"page": page, "size": size},
             )
             if resp.status_code >= 400:
@@ -224,7 +277,7 @@ async def list_all_conclusions(wid: str):
 
 
 @app.post("/api/workspaces/{wid}/sessions/{sid}/messages/list/all")
-async def list_all_messages(wid: str, sid: str):
+async def list_all_messages(wid: str, sid: str, request: Request):
     """Fetch ALL messages for a session by paginating through them.
 
     Honcho uses fastapi_pagination which reads page/size from QUERY
@@ -232,6 +285,11 @@ async def list_all_messages(wid: str, sid: str):
     """
     if not VALID_ID.match(wid) or not VALID_ID.match(sid):
         return JSONResponse({"error": "invalid_id"}, status_code=400)
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
 
     all_messages = []
     page = 1
@@ -242,7 +300,7 @@ async def list_all_messages(wid: str, sid: str):
         try:
             resp = await _client.post(
                 f"/v3/workspaces/{wid}/sessions/{sid}/messages/list",
-                json={},
+                json=body,
                 params={"page": page, "size": size},
             )
             if resp.status_code >= 400:

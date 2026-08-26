@@ -36,12 +36,12 @@ Hombre provides a single-page application (SPA) dashboard for managing and explo
 
 | Tab | Purpose |
 |-----|---------|
-| Overview | Workspace summary, health status, workspace management |
-| Peers | Browse peers, view representations and cards |
-| Sessions | Browse sessions, view messages and summaries |
-| Messages | Browse messages across sessions with filtering |
+| Overview | Workspace summary, health status, workspace metadata, and manual refresh |
+| Peers | Browse and search peers, view representations and cards |
+| Sessions | Browse and search sessions, view messages and summaries |
+| Messages | Search full message content across one or all sessions, with peer filtering |
 | Chat | Natural language queries against peer representations |
-| Conclusions | View and search reasoning/memories by peer |
+| Conclusions | Filter, sort, search, paginate, and export reasoning/memories |
 | Settings | Configure Honcho server models and providers |
 
 ---
@@ -69,6 +69,10 @@ The Overview tab displays:
 - Total sessions count
 - Total conclusions count
 - List of all workspaces with creation dates
+
+### Editing Workspace Metadata
+
+Use **Edit Workspace** in the Overview tab to update the selected workspace's metadata as a JSON object. Workspace IDs cannot be changed.
 
 ---
 
