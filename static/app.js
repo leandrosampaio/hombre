@@ -116,7 +116,7 @@ const App = {
       Modal.show('Create Workspace', [label, input], async () => {
         const id = document.getElementById('modal-input').value.trim();
         if (!id) return;
-        await App.api('workspaces/create', { body: { id } });
+        await App.api('workspaces', { body: { id } });
         Modal.close();
         await App.loadWorkspaces();
         App.renderWorkspaceSelect();
